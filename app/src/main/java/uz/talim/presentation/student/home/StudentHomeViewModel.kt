@@ -1,0 +1,70 @@
+package uz.talim.presentation.student.home
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import uz.talim.domain.model.Assignment
+import uz.talim.domain.usecase.GetAssignmentsUseCase
+import uz.talim.util.Resource
+import javax.inject.Inject
+
+@HiltViewModel
+class StudentHomeViewModel @Inject constructor(
+    private val getAssignmentsUseCase: GetAssignmentsUseCase,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(StudentHomeState())
+    val state: StateFlow<StudentHomeState> = _state.asStateFlow()
+
+    fun loadAssignments(groupId: String) {
+        viewModelScope.launch {
+            getAssignmentsUseCase(groupId).collect { result ->
+                when (result) {
+                    is Resource.Loading -> {
+                        _state.value = _state.value.copy(
+                            isLoading = true,
+                            assignments = result.data ?: emptyList(),
+                        )
+                    }
+                    is Resource.Success -> {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            assignments = result.data ?: emptyList(),
+                            error = null,
+                        )
+                    }
+                    is Resource.Error -> {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            error = result.message,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun onEvent(event: StudentHomeEvent) {
+        when (event) {
+            is StudentHomeEvent.Refresh -> loadAssignments(event.groupId)
+            StudentHomeEvent.ClearError -> {
+                _state.value = _state.value.copy(error = null)
+            }
+        }
+    }
+}
+
+data class StudentHomeState(
+    val isLoading: Boolean = false,
+    val assignments: List<Assignment> = emptyList(),
+    val error: String? = null,
+)
+
+sealed class StudentHomeEvent {
+    data class Refresh(val groupId: String) : StudentHomeEvent()
+    data object ClearError : StudentHomeEvent()
+}
